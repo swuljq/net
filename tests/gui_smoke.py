@@ -74,6 +74,8 @@ def main():
             if state["step"] == 0:
                 app.controller.probe = lambda _: ProbeResult(LinkState.ONLINE, "模拟联网正常")
                 assert window.widgets["interval"].get_value_as_int() == 30
+                assert window.widgets["probe_status"].get_value_as_int() == 204
+                assert window.widgets["probe_expected"].get_text() == ""
                 assert window.widgets["preferred_ssid"].get_text() == "ljq"
                 screenshot = os.environ.get("CAMPUS_GUI_SCREENSHOT")
                 if screenshot:

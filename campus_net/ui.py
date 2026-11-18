@@ -304,7 +304,7 @@ class MainWindow(Gtk.ApplicationWindow):
         self.row(fields, "检测网址", self.entry("probe_url"))
         self.row(fields, "预期内容", self.entry("probe_expected"))
         self.row(fields, "预期 HTTP 状态码", self.spin("probe_status", 200, 299))
-        advanced.pack_start(label("默认使用 Ubuntu 连通性检测服务。检测异常不会直接判断为密码错误；只有识别出门户页面后才自动认证。检测不使用环境代理，VPN 路由仍可能影响结果。", "caption"), False, False, 0)
+        advanced.pack_start(label("默认使用 Ubuntu 连通性检测服务，正常预期为 HTTP 204，预期内容留空。检测不会发送校园网账号密码。检测异常不会直接判断为密码错误；只有识别出门户页面后才自动认证。检测不使用环境代理，VPN 路由仍可能影响结果。", "caption"), False, False, 0)
         expander.add(advanced)
         page.pack_start(expander, False, False, 0)
 

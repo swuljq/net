@@ -9,6 +9,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 APP_NAME = "campus-network-assistant"
+DEFAULT_PROBE_URL = "http://connectivity-check.ubuntu.com/"
 
 
 def config_dir():
@@ -66,9 +67,9 @@ class Config:
     method: str = "POST_FORM"
     extra_params: dict = field(default_factory=dict)
     timeout: int = 10
-    probe_url: str = "http://connectivity-check.ubuntu.com/"
-    probe_expected: str = "NetworkManager is online"
-    probe_status: int = 200
+    probe_url: str = DEFAULT_PROBE_URL
+    probe_expected: str = ""
+    probe_status: int = 204
     interval: int = 30
     stable_seconds: int = 15
     autostart: bool = False
@@ -149,6 +150,12 @@ def load_config(path=None):
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             raise ValueError
+        # Ubuntu 检测服务当前返回 204，无正文。仅迁移完整匹配的旧默认组合，
+        # 不覆盖用户设置的其他检测服务/状态码/内容，也不在加载时重写文件。
+        if (data.get("probe_url"), data.get("probe_status"), data.get("probe_expected")) == (
+            DEFAULT_PROBE_URL, 200, "NetworkManager is online"
+        ):
+            data.update(probe_status=204, probe_expected="")
         allowed = {f.name for f in fields(Config)}
         return Config(**{k: v for k, v in data.items() if k in allowed}).validate()
     except (ValueError, TypeError, OSError):

@@ -36,6 +36,6 @@ def probe(config):
                     "password" in lowered or "login" in lowered or "登录" in body
                 ):
                     return ProbeResult(LinkState.PORTAL, "联网检测返回登录页面，需要校园网认证")
-                return ProbeResult(LinkState.UNKNOWN, "检测响应与预期不符；请检查网络或调整检测地址")
+                return ProbeResult(LinkState.UNKNOWN, f"检测响应与预期不符（HTTP {response.status_code}）；请检查预期状态码、内容或检测地址")
     except requests.RequestException:
         return ProbeResult(LinkState.UNKNOWN, "联网检测超时或连接失败，稍后重试")

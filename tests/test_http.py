@@ -86,7 +86,7 @@ class HTTPTests(unittest.TestCase):
         self.server.state = {}
         self.config = Config(
             login_url=self.base + "/login", username="student", username_field="user", password_field="pass",
-            probe_url=self.base + "/check", probe_expected="ONLINE", extra_params={"action": "login"},
+            probe_url=self.base + "/check", probe_status=200, probe_expected="ONLINE", extra_params={"action": "login"},
             preflight_url=self.base + "/preflight",
         )
 

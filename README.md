@@ -6,10 +6,10 @@ Ubuntu/Linux 原生桌面应用：优先连接 `ljq`，不可用时连接 `cqu-w
 
 ## 安装
 
-构建后的安装包位于 `dist/campus-network-assistant_0.2.0_all.deb`。GitHub Actions 每次推送也会构建安装包，可从对应工作流运行的 **Artifacts → ubuntu-deb** 下载并解压。
+构建后的安装包位于 `dist/campus-network-assistant_0.2.1_all.deb`。GitHub Actions 每次推送也会构建安装包，可从对应工作流运行的 **Artifacts → ubuntu-deb** 下载并解压。
 
 ```bash
-sudo apt install ./campus-network-assistant_0.2.0_all.deb
+sudo apt install ./campus-network-assistant_0.2.1_all.deb
 ```
 
 从应用菜单打开“校园网自动连接助手”，或运行：
@@ -112,7 +112,11 @@ campus-network-assistant --version
 - 优先网络没有互联网时仅显示状态，不因单次外网探测失败自动切走。
 - 暂停可阻止后续操作；已发出的 NetworkManager 或 HTTP 操作会在自身超时后结束，无法撤回已提交的认证或连接请求。
 
-默认联网探测使用 Ubuntu 连通性检查服务，可在运行选项中更换地址、预期内容和状态码。检测和认证不继承环境代理，但 VPN/策略路由仍可能影响探测流量；使用时应确保探测能反映校园网自身的连通性。
+默认联网探测使用 Ubuntu 连通性检查服务 `http://connectivity-check.ubuntu.com/`，正常返回 **HTTP 204、无正文**，因此预期状态码为 `204`、预期内容留空。检测请求不携带校园网账号密码，校园网密码只提交到配置的认证接口。可在运行选项中更换地址、预期内容和状态码。
+
+0.2.1 会在读取配置时自动修正旧版本完整匹配的默认组合（Ubuntu 检测地址、HTTP 200、`NetworkManager is online`），自定义检测设置保持原样。若旧进程仍在后台，请先退出再运行新版；也可以直接把界面的预期状态码改为 `204`、预期内容清空并保存。
+
+检测和认证不继承环境代理，但 VPN/策略路由仍可能影响探测流量；使用时应确保探测能反映校园网自身的连通性。
 
 ## 本机数据和权限
 
@@ -144,7 +148,7 @@ dbus-run-session -- /usr/bin/python3 tests/gui_smoke.py
 # 无图形会话的 CI 可安装 xvfb 后运行：
 xvfb-run -a dbus-run-session -- /usr/bin/python3 tests/gui_smoke.py
 # 隔离解包后使用包内代码进行同样的 GUI 检查：
-/usr/bin/python3 tests/package_smoke.py dist/campus-network-assistant_0.2.0_all.deb
+/usr/bin/python3 tests/package_smoke.py dist/campus-network-assistant_0.2.1_all.deb
 ```
 
 测试使用模拟网络和本地 HTTP 服务。真实热点切换、真实校园网协议和认证过期重连需在目标网络现场验收。

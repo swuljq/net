@@ -33,7 +33,7 @@ class ConfigTests(unittest.TestCase):
             {"interval": "30"}, {"interval": True}, {"interval": 0},
             {"login_url": "file:///tmp/login"}, {"login_url": "https://u:p@portal.example"},
             {"preferred_ssid": "cqu-wifi"}, {"extra_params": {"token": "secret"}},
-            {"extra_params": {"action": 1}}, {"probe_expected": ""},
+            {"extra_params": {"action": 1}}, {"probe_expected": "", "probe_status": 200},
             {"preferred_uuid": "bad"}, {"interface": "wlan0\nextra"},
         ]
         for values in cases:
@@ -47,6 +47,30 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 load_config(path)
             self.assertEqual(path.read_text(), "broken")
+
+    def test_old_ubuntu_default_is_migrated_without_overwriting_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            data = {"probe_url": Config().probe_url, "probe_status": 200, "probe_expected": "NetworkManager is online"}
+            path.write_text(json.dumps(data))
+            config = load_config(path)
+            self.assertEqual(config.probe_status, 204)
+            self.assertEqual(config.probe_expected, "")
+            self.assertEqual(json.loads(path.read_text()), data)
+
+    def test_custom_probe_is_preserved(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "config.json"
+            for url, status, content in (
+                ("http://portal.example/check", 200, "NetworkManager is online"),
+                (Config().probe_url, 200, "custom-content"),
+                (Config().probe_url, 204, ""),
+            ):
+                with self.subTest(url=url, content=content):
+                    data = {"probe_url": url, "probe_status": status, "probe_expected": content}
+                    path.write_text(json.dumps(data))
+                    config = load_config(path)
+                    self.assertEqual((config.probe_url, config.probe_status, config.probe_expected), (url, status, content))
 
     def test_autostart_can_be_enabled_and_removed(self):
         with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"XDG_CONFIG_HOME": directory}):

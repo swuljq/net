@@ -4,6 +4,8 @@
 - 运行平台：当前电脑，Ubuntu 22.04 / Linux / NetworkManager
 - 仓库：https://github.com/swuljq/net.git，默认分支 `main`
 
+本文记录初始版本设计。0.2.0 已根据用户提供的实际请求补充重庆大学 Dr.COM 协议，详见 [适配说明](../../cqu-drcom.md) 和 [验证记录](../../verification.md)；真实登录结果仍待现场验收。
+
 ## 1. 目标
 
 提供可安装的 Linux 桌面应用，通过图形界面配置 Wi-Fi 优先级、校园网认证和自动运行规则。优先连接 `ljq`，不可用时连接 `cqu-wifi`；校园网认证失效后自动重新认证。

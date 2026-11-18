@@ -15,7 +15,7 @@ from gi.repository import Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from . import __version__
 from .autostart import set_autostart
-from .config import Config, load_config, save_config
+from .config import Config, load_config, save_config, uses_cqu
 from .connectivity import probe
 from .controller import Controller, Status
 from .logging_utils import SafeFormatter, setup_logging
@@ -224,7 +224,12 @@ class MainWindow(Gtk.ApplicationWindow):
         page = self.page("auth", "校园网认证", "认证地址、账号和参数都保存在本机。密码使用系统密钥环保存。")
         page.pack_start(self.check("auth_enabled", "启用校园网自动认证"), False, False, 0)
         grid = self.form(page)
-        self.row(grid, "登录网址", self.entry("login_url", "http://校园网认证服务器/登录接口"))
+        mode = Gtk.ComboBoxText()
+        for key, title in (("auto", "自动识别（支持重庆大学）"), ("cqu_drcom", "重庆大学 Dr.COM"), ("form", "普通 HTTP 表单")):
+            mode.append(key, title)
+        self.widgets["auth_mode"] = mode
+        self.row(grid, "认证模式", mode)
+        self.row(grid, "登录网址", self.entry("login_url", "https://login.cqu.edu.cn/ 或普通登录接口"))
         self.row(grid, "校园网账号", self.entry("username"))
         self.row(grid, "校园网密码", self.entry("password", "输入密码", secret=True))
         password_options = Gtk.Box(spacing=12)
@@ -235,30 +240,54 @@ class MainWindow(Gtk.ApplicationWindow):
         show.connect("toggled", lambda toggle: self.widgets["password"].set_visibility(toggle.get_active()))
         password_options.pack_start(show, False, False, 0)
         self.row(grid, "", password_options)
+        self.auth_hint = label("", "caption")
+        page.pack_start(self.auth_hint, False, False, 0)
         buttons = Gtk.Box(spacing=8)
         self.test_button = button("保存并测试认证", lambda *_: self.save_form(test=True))
         self.clear_password_button = button("清除已保存密码", lambda *_: self.app.clear_password())
         buttons.pack_start(self.test_button, False, False, 0)
         buttons.pack_start(self.clear_password_button, False, False, 0)
         page.pack_start(buttons, False, False, 0)
-        expander = Gtk.Expander(label="高级认证参数 · 普通 HTTP 表单")
+        expander = Gtk.Expander(label="高级认证参数")
         advanced = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         advanced.set_border_width(12)
         fields = self.form(advanced)
+        self.row(fields, "重庆大学账号前缀", self.entry("account_prefix", ",0,"))
         method = Gtk.ComboBoxText()
         for key, title in (("POST_FORM", "POST 表单（默认）"), ("POST_JSON", "POST JSON"), ("GET", "GET 查询参数")):
             method.append(key, title)
         self.widgets["method"] = method
-        self.row(fields, "提交方式", method)
-        self.row(fields, "账号字段名", self.entry("username_field"))
-        self.row(fields, "密码字段名", self.entry("password_field"))
+        self.row(fields, "普通表单提交方式", method)
+        self.row(fields, "普通表单账号字段", self.entry("username_field"))
+        self.row(fields, "普通表单密码字段", self.entry("password_field"))
         self.row(fields, "预访问地址", self.entry("preflight_url", "可选；用于建立登录会话"))
         self.row(fields, "额外参数 JSON", self.entry("extra_params", '{"action": "login"}'))
-        advanced.pack_start(label("登录网址应填写真正接收账号密码的接口地址。动态加密、验证码、扫码等专用认证需要额外适配；普通表单不保证兼容所有校园网。", "caption"), False, False, 0)
+        advanced.pack_start(label("重庆大学模式自动生成 user_account、user_password 和当前网卡 IPv4，使用 GET/JSONP，不使用普通表单字段。额外参数可覆盖 login_method、wlan_ac_ip 等静态选项，不要填写账号、密码或 IPv4。", "caption"), False, False, 0)
         advanced.pack_start(label("GET 方式会把账号密码放入请求 URL，建议优先使用 POST。额外参数只填写非敏感选项；密码使用上方专用字段。", "caption"), False, False, 0)
         expander.add(advanced)
         page.pack_start(expander, False, False, 0)
         page.pack_start(label("测试认证前需要已连接备用校园网。返回 HTTP 200 不代表成功，程序会再次检查互联网连接。", "caption"), False, False, 0)
+        mode.connect("changed", self.update_auth_mode)
+        self.widgets["login_url"].connect("changed", self.update_auth_mode)
+
+    def update_auth_mode(self, widget=None):
+        mode = self.widgets["auth_mode"].get_active_id() or "auto"
+        url = self.widgets["login_url"].get_text().strip()
+        if widget is self.widgets["auth_mode"] and mode == "cqu_drcom" and not url:
+            self.widgets["login_url"].set_text("https://login.cqu.edu.cn/")
+            return
+        try:
+            cqu = uses_cqu(replace(self.app.config, auth_mode=mode, login_url=url))
+        except ValueError:
+            cqu = False
+        for name in ("method", "username_field", "password_field", "preflight_url"):
+            self.widgets[name].set_sensitive(not cqu)
+        self.widgets["account_prefix"].set_sensitive(cqu)
+        if cqu:
+            text = "已选择重庆大学 Dr.COM：只填原始账号和密码；自动添加账号前缀、读取网卡 IPv4 并生成 GET/JSONP 请求，无需填写账号或密码字段名。"
+        else:
+            text = "普通 HTTP 表单：需在高级参数中填写实际请求的字段名和提交方式。自动识别仅对 login.cqu.edu.cn 启用重庆大学模式。"
+        self.auth_hint.set_text(text)
 
     def _options_page(self):
         page = self.page("options", "运行选项", "调整检查频率、稳定等待和联网检测。暂停后保留当前 Wi-Fi 连接。")
@@ -311,6 +340,7 @@ class MainWindow(Gtk.ApplicationWindow):
             elif isinstance(widget, Gtk.ComboBoxText):
                 widget.set_active_id(value)
         self.device_combo.set_active_id(config.interface or "auto")
+        self.update_auth_mode()
 
     def update_profiles(self, interfaces, profiles):
         self.updating_profiles = True
@@ -355,7 +385,7 @@ class MainWindow(Gtk.ApplicationWindow):
                 values[name] = widget.get_active()
             elif isinstance(widget, Gtk.ComboBoxText):
                 value = widget.get_active_id()
-                values[name] = "" if value == "auto" else (value or "")
+                values[name] = "" if name.endswith("_uuid") and value == "auto" else (value or "")
         try:
             values["extra_params"] = json.loads(values["extra_params"] or "{}")
         except ValueError:

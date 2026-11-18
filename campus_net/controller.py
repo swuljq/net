@@ -5,7 +5,7 @@ import threading
 import time
 from dataclasses import dataclass
 
-from .auth import FormAuthenticator
+from .auth import Authenticator
 from .connectivity import LinkState, probe
 from .network import NetworkError
 
@@ -27,7 +27,7 @@ class Controller:
         self.network = network
         self.password_getter = password_getter
         self.notify = notify
-        self.authenticator = authenticator or FormAuthenticator()
+        self.authenticator = authenticator or Authenticator(network)
         self.probe = probe_fn
         self.clock = clock
         self.cancel = threading.Event()
@@ -84,7 +84,7 @@ class Controller:
         if self.cancel.is_set():
             return
         self.report("正在认证", "正在提交校园网认证请求", snapshot)
-        result = self.authenticator.authenticate(cfg, password)
+        result = self.authenticator.authenticate(cfg, password, interface=snapshot.interface)
         if self.cancel.is_set():
             return
         if result.submitted:

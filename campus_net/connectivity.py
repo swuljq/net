@@ -30,6 +30,8 @@ def probe(config):
                 ):
                     return ProbeResult(LinkState.ONLINE, "互联网连接正常")
                 lowered = body.lower()
+                if response.status_code == 200 and "dr.comwebloginid_" in lowered:
+                    return ProbeResult(LinkState.PORTAL, "联网检测返回 Dr.COM 门户页面，需要校园网认证")
                 if response.status_code == 200 and "<form" in lowered and (
                     "password" in lowered or "login" in lowered or "登录" in body
                 ):

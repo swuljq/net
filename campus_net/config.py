@@ -6,7 +6,7 @@ import tempfile
 import uuid
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 APP_NAME = "campus-network-assistant"
 
@@ -29,6 +29,24 @@ def validate_url(value, label):
         raise ValueError(f"{label}必须是有效的 HTTP/HTTPS 地址，且不含用户名、密码或片段") from None
 
 
+def uses_cqu(config):
+    return config.auth_mode == "cqu_drcom" or (
+        config.auth_mode == "auto" and urlsplit(config.login_url).hostname == "login.cqu.edu.cn"
+    )
+
+
+def cqu_endpoint(value):
+    """支持入口页或不含参数的接口地址，不接受含密码的完整抓包 URL。"""
+    validate_url(value, "登录网址")
+    parsed = urlsplit(value)
+    if parsed.query or parsed.path not in ("", "/", "/eportal/portal/login", "/eportal/portal/login/"):
+        raise ValueError("重庆大学认证请填写入口网址或不含查询参数的 /eportal/portal/login 地址")
+    netloc = parsed.netloc
+    if parsed.port is None:
+        netloc += ":802" if parsed.scheme == "https" else ":801"
+    return urlunsplit((parsed.scheme, netloc, "/eportal/portal/login", "", ""))
+
+
 @dataclass
 class Config:
     version: int = 1
@@ -38,6 +56,8 @@ class Config:
     preferred_uuid: str = ""
     fallback_uuid: str = ""
     auth_enabled: bool = True
+    auth_mode: str = "auto"
+    account_prefix: str = ",0,"
     login_url: str = ""
     preflight_url: str = ""
     username: str = ""
@@ -77,6 +97,8 @@ class Config:
             raise ValueError("请求超时应为 2–60 秒")
         if self.method not in ("POST_FORM", "POST_JSON", "GET"):
             raise ValueError("认证提交方式无效")
+        if self.auth_mode not in ("auto", "form", "cqu_drcom"):
+            raise ValueError("认证模式无效")
         if not isinstance(self.extra_params, dict) or any(
             not isinstance(k, str) or not isinstance(v, str) for k, v in self.extra_params.items()
         ):
@@ -86,6 +108,14 @@ class Config:
             raise ValueError("额外参数不能存放密码或令牌；密码请填写到专用密码框")
         if self.login_url:
             validate_url(self.login_url, "登录网址")
+            if uses_cqu(self):
+                cqu_endpoint(self.login_url)
+                allowed = {
+                    "login_method", "wlan_user_ipv6", "wlan_user_mac", "wlan_ac_ip", "wlan_ac_name",
+                    "term_type", "jsVersion", "terminal_type", "lang",
+                }
+                if self.extra_params.keys() - allowed:
+                    raise ValueError("重庆大学额外参数仅支持静态协议选项；账号、密码、IPv4 和回调由程序生成")
         if self.preflight_url:
             validate_url(self.preflight_url, "预访问地址")
         validate_url(self.probe_url, "联网检测网址")
@@ -102,11 +132,11 @@ class Config:
         if self.auth_enabled and (require_auth or self.login_url):
             if not self.login_url or not self.username:
                 raise ValueError("启用自动认证时，请填写登录网址和账号")
-            if not self.username_field or not self.password_field:
+            if not uses_cqu(self) and (not self.username_field or not self.password_field):
                 raise ValueError("请填写账号字段名和密码字段名")
-            if self.username_field == self.password_field:
+            if not uses_cqu(self) and self.username_field == self.password_field:
                 raise ValueError("账号字段和密码字段不能相同")
-            if self.username_field in self.extra_params or self.password_field in self.extra_params:
+            if not uses_cqu(self) and (self.username_field in self.extra_params or self.password_field in self.extra_params):
                 raise ValueError("额外参数不能覆盖账号或密码字段")
         return self
 

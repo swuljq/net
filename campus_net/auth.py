@@ -1,10 +1,11 @@
-"""普通表单适配器；专用协议可实现相同的 authenticate 接口。"""
+"""普通 HTTP 表单和重庆大学 Dr.COM 认证适配器。"""
 
 from dataclasses import dataclass
 
 import requests
 
 from .http import session, small_body
+from .config import uses_cqu
 
 
 @dataclass(frozen=True)
@@ -42,3 +43,15 @@ class FormAuthenticator:
                     return AuthResult(True, "认证请求已提交，正在复查互联网连接")
         except requests.RequestException:
             return AuthResult(False, "认证请求超时、证书验证失败或连接失败；请检查地址及网络")
+
+
+class Authenticator:
+    def __init__(self, network):
+        self.network = network
+
+    def authenticate(self, config, password, interface=""):
+        if uses_cqu(config):
+            from .cqu_auth import CquAuthenticator
+
+            return CquAuthenticator(self.network).authenticate(config, password, interface)
+        return FormAuthenticator().authenticate(config, password)

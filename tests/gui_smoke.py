@@ -79,16 +79,33 @@ def main():
                 if screenshot:
                     surface = window.get_window()
                     Gdk.pixbuf_get_from_window(surface, 0, 0, window.get_allocated_width(), window.get_allocated_height()).savev(screenshot, "png", [], [])
+                window.widgets["auth_mode"].set_active_id("cqu_drcom")
+                assert window.widgets["login_url"].get_text() == "https://login.cqu.edu.cn/"
+                assert not window.widgets["username_field"].get_sensitive()
+                assert not window.widgets["method"].get_sensitive()
+                assert window.widgets["account_prefix"].get_sensitive()
+                window.widgets["auth_mode"].set_active_id("form")
+                assert window.widgets["username_field"].get_sensitive()
+                window.widgets["auth_mode"].set_active_id("auto")
+                assert not window.widgets["username_field"].get_sensitive()
+                window.widgets["username"].set_text("test-student")
                 window.widgets["preferred_ssid"].set_text("测试热点")
                 window.widgets["auth_enabled"].set_active(False)
                 window.widgets["stable_seconds"].set_value(0)
                 window.widgets["autostart"].set_active(True)
+                window.stack.set_visible_child_name("auth")
                 window.save_form()
                 state["step"] = 1
             elif state["step"] == 1:
                 saved = load_config()
                 assert saved.preferred_ssid == "测试热点"
                 assert not saved.auth_enabled and not saved.enabled
+                assert saved.auth_mode == "auto" and saved.account_prefix == ",0,"
+                assert saved.login_url == "https://login.cqu.edu.cn/"
+                screenshot = os.environ.get("CAMPUS_AUTH_SCREENSHOT")
+                if screenshot:
+                    surface = window.get_window()
+                    Gdk.pixbuf_get_from_window(surface, 0, 0, window.get_allocated_width(), window.get_allocated_height()).savev(screenshot, "png", [], [])
                 assert (Path(os.environ["XDG_CONFIG_HOME"]) / "autostart/campus-network-assistant.desktop").exists()
                 window.on_toggle()
                 state["step"] = 2
@@ -145,7 +162,7 @@ def main():
     if errors:
         raise SystemExit("GUI 冒烟测试失败：" + "; ".join(errors))
     assert result == 0
-    print("GUI 冒烟测试通过：配置保存、自动启动、启停、只读检查、隐藏恢复、单实例。")
+    print("GUI 冒烟测试通过：重庆大学模式识别、字段切换、配置保存、自动启动、启停、只读检查、隐藏恢复、单实例。")
 
 
 if __name__ == "__main__":

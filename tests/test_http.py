@@ -40,6 +40,8 @@ class PortalHandler(BaseHTTPRequestHandler):
             self.reply(200, b"maintenance")
         elif path.path == "/empty":
             self.reply(204)
+        elif path.path == "/drcom":
+            self.reply(200, b'<!--Dr.COMWebLoginID_0.htm--><script src="a41.js"></script>')
         else:
             self.reply(500)
 
@@ -120,6 +122,7 @@ class HTTPTests(unittest.TestCase):
         self.assertEqual(probe(replace(self.config, probe_url=self.base + "/page")).state, LinkState.PORTAL)
         self.assertEqual(probe(replace(self.config, probe_url=self.base + "/unrelated")).state, LinkState.UNKNOWN)
         self.assertEqual(probe(replace(self.config, probe_url=self.base + "/empty", probe_status=204, probe_expected="")).state, LinkState.ONLINE)
+        self.assertEqual(probe(replace(self.config, probe_url=self.base + "/drcom")).state, LinkState.PORTAL)
 
     def test_connection_failure_does_not_expose_credentials_or_url(self):
         # 已绑定但不监听的 TCP 端口，立即拒绝连接。

@@ -87,6 +87,17 @@ class NetworkTests(unittest.TestCase):
         with self.assertRaises(NetworkError):
             network.snapshot()
 
+    def test_ipv4_reads_only_selected_wifi_and_rejects_missing_or_ambiguous_ip(self):
+        network = NetworkManager()
+        network.select_interface = Mock(return_value="wlan-test")
+        network.run = Mock(return_value="192.0.2.20/24\n")
+        self.assertEqual(network.ipv4_address("wlan-test"), "192.0.2.20")
+        network.run.assert_called_with("-g", "IP4.ADDRESS", "device", "show", "wlan-test")
+        for output in ("", "--", "169.254.1.1/16", "127.0.0.1/8", "192.0.2.20/24\n192.0.2.99/24"):
+            with self.subTest(output=output), self.assertRaises(NetworkError):
+                network.run.return_value = output
+                network.ipv4_address("wlan-test")
+
     def test_raw_nmcli_failure_is_not_exposed(self):
         import subprocess
         network = NetworkManager()

@@ -1,6 +1,7 @@
 """只封装 NetworkManager；不输出可能包含敏感信息的原始命令错误。"""
 
 import getpass
+import ipaddress
 import os
 import subprocess
 import uuid
@@ -102,6 +103,25 @@ class NetworkManager:
 
     def current(self, interface=""):
         return self._current(self.select_interface(interface))
+
+    def ipv4_address(self, interface=""):
+        """每次认证时读取指定网卡的地址，不使用 VPN/默认路由的源地址。"""
+        interface = self.select_interface(interface)
+        output = self.run("-g", "IP4.ADDRESS", "device", "show", interface)
+        addresses = []
+        for line in output.splitlines():
+            try:
+                address = ipaddress.IPv4Interface(line.strip()).ip
+            except ValueError:
+                continue
+            if not (address.is_unspecified or address.is_loopback or address.is_link_local or address.is_multicast):
+                addresses.append(str(address))
+        addresses = list(dict.fromkeys(addresses))
+        if len(addresses) > 1:
+            raise NetworkError("所选无线网卡有多个 IPv4 地址，请在系统网络设置中确认校园网地址")
+        if not addresses:
+            raise NetworkError("所选无线网卡尚未取得有效 IPv4 地址，等待 DHCP 分配后重试")
+        return addresses[0]
 
     def snapshot(self, interface=""):
         interface = self.select_interface(interface)

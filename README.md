@@ -6,10 +6,10 @@ Ubuntu/Linux 原生桌面应用：优先连接 `ljq`，不可用时连接 `cqu-w
 
 ## 安装
 
-构建后的安装包位于 `dist/campus-network-assistant_0.2.1_all.deb`。GitHub Actions 每次推送也会构建安装包，可从对应工作流运行的 **Artifacts → ubuntu-deb** 下载并解压。
+构建后的安装包位于 `dist/campus-network-assistant_0.2.2_all.deb`。GitHub Actions 每次推送也会构建安装包，可从对应工作流运行的 **Artifacts → ubuntu-deb** 下载并解压。
 
 ```bash
-sudo apt install ./campus-network-assistant_0.2.1_all.deb
+sudo apt install ./campus-network-assistant_0.2.2_all.deb
 ```
 
 从应用菜单打开“校园网自动连接助手”，或运行：
@@ -118,6 +118,14 @@ campus-network-assistant --version
 
 检测和认证不继承环境代理，但 VPN/策略路由仍可能影响探测流量；使用时应确保探测能反映校园网自身的连通性。
 
+### 校园网连接超时如何处理
+
+Wi-Fi 连接和网页认证是两个阶段。当前现场看到的 `CQU_WiFi` 是**开放网络**，不需要 Wi-Fi 密码；上网密码应填写到“校园网认证”页。若曾将它误建为 WPA/WPA2 密码连接，请在备用网络的连接列表中选择已经存在、标注“开放网络”的 `CQU_WiFi`，或新建开放连接，然后保存。
+
+0.2.2 起，连接列表显示安全方式，切换前检查热点与连接配置是否匹配；若开放热点错误选用了加密连接，直接提示原因，不先断开当前网络。系统正在关联 Wi-Fi 或获取 IP 时，显示“等待系统连接”，不重复提交连接或认证请求。正常连接等待由 20 秒延长为 60 秒，独立于 HTTP 请求超时。
+
+错误配置和系统自动连接可能互相干扰：系统用正确的开放配置连上校园网后，旧版助手又尝试切换到错误的加密配置，造成“超时—已联网—再次超时”。请先修正所选连接。日志中的“已联网”会标明当前 Wi-Fi；它仅表示检测通过，不一定发生过新的网页认证。
+
 ## 本机数据和权限
 
 - 配置：`~/.config/campus-network-assistant/config.json`，只包含配置和校园网账号，不包含密码。
@@ -148,7 +156,7 @@ dbus-run-session -- /usr/bin/python3 tests/gui_smoke.py
 # 无图形会话的 CI 可安装 xvfb 后运行：
 xvfb-run -a dbus-run-session -- /usr/bin/python3 tests/gui_smoke.py
 # 隔离解包后使用包内代码进行同样的 GUI 检查：
-/usr/bin/python3 tests/package_smoke.py dist/campus-network-assistant_0.2.1_all.deb
+/usr/bin/python3 tests/package_smoke.py dist/campus-network-assistant_0.2.2_all.deb
 ```
 
 测试使用模拟网络和本地 HTTP 服务。真实热点切换、真实校园网协议和认证过期重连需在目标网络现场验收。

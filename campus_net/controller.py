@@ -52,7 +52,7 @@ class Controller:
             phase, detail,
         )
         if status != self.status:
-            log.info("%s · %s", phase, detail)
+            log.info("%s · Wi-Fi：%s · %s", phase, status.ssid, detail)
         self.status = status
         self.notify(status)
 
@@ -112,6 +112,10 @@ class Controller:
             snapshot = self.network.snapshot(cfg.interface)
             if self.cancel.is_set():
                 return
+            if snapshot.connecting:
+                detail = "正在获取网络地址，请等待" if snapshot.device_state == 70 else "系统正在连接 Wi-Fi，请等待"
+                self.report("等待系统连接", detail + "；暂不重复发起连接或认证", snapshot)
+                return
             if authenticate_only:
                 if snapshot.ssid != cfg.fallback_ssid:
                     self.report("无法测试认证", "请先连接配置的校园网，再点击测试认证", snapshot)
@@ -156,7 +160,7 @@ class Controller:
                     count = self.connection_failures.get(ssid, 0) + 1
                     self.connection_failures[ssid] = count
                     if count >= 2:
-                        self.cooldowns[ssid] = now + 120
+                        self.cooldowns[ssid] = self.clock() + 120
                         self.connection_failures[ssid] = 0
                     raise
                 if self.cancel.is_set():

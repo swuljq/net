@@ -37,6 +37,17 @@ class Profile:
     uuid: str
     ssid: str
     interface: str = ""
+    key_mgmt: str = ""
+
+    @property
+    def security_label(self):
+        if self.key_mgmt in ("", "--"):
+            return "开放网络"
+        if self.key_mgmt == "wpa-psk":
+            return "WPA/WPA2 密码网络"
+        if self.key_mgmt in ("wpa-eap", "ieee8021x", "wpa-eap-suite-b-192"):
+            return "企业认证网络"
+        return "加密网络"
 
 
 @dataclass(frozen=True)
@@ -45,13 +56,18 @@ class Snapshot:
     ssid: str
     uuid: str
     visible: frozenset
+    device_state: int = 100
+
+    @property
+    def connecting(self):
+        return 40 <= self.device_state <= 90
 
 
 class NetworkManager:
-    def run(self, *args, timeout=25):
+    def run(self, *args, timeout=25, wait=20):
         try:
             result = subprocess.run(
-                ["nmcli", "--colors", "no", "--wait", "20", *args],
+                ["nmcli", "--colors", "no", "--wait", str(wait), *args],
                 capture_output=True, text=True, timeout=timeout,
                 env={**os.environ, "LC_ALL": "C"},
             )
@@ -69,12 +85,12 @@ class NetworkManager:
         return [row[0] for row in rows if len(row) == 3 and row[1] == "wifi"]
 
     def profile(self, profile_uuid):
-        value = self.run("-g", "connection.id,connection.uuid,802-11-wireless.ssid,connection.interface-name", "connection", "show", "uuid", profile_uuid)
+        value = self.run("-g", "connection.id,connection.uuid,802-11-wireless.ssid,connection.interface-name,802-11-wireless-security.key-mgmt", "connection", "show", "uuid", profile_uuid)
         rows = value.split("\n")
         if len(rows) < 3:
             raise NetworkError("所选连接不是有效的 Wi-Fi 配置")
         # -g 仍使用转义，字段各占一行。
-        return Profile(*(split_escaped(v)[0] for v in (rows + [""])[:4]))
+        return Profile(*(split_escaped(v)[0] for v in (rows + ["", ""])[:5]))
 
     def profiles(self):
         rows = [split_escaped(row) for row in self.run("-t", "-f", "NAME,UUID,TYPE", "connection", "show").splitlines()]
@@ -95,11 +111,16 @@ class NetworkManager:
         return interface
 
     def _current(self, interface, visible=frozenset()):
+        raw_state = self.run("-g", "GENERAL.STATE", "device", "show", interface)
+        try:
+            device_state = int(raw_state.split()[0])
+        except (ValueError, IndexError):
+            raise NetworkError("无法识别无线网卡连接状态，请在系统网络设置中检查") from None
         active_uuid = self.run("-g", "GENERAL.CON-UUID", "device", "show", interface).strip()
         if active_uuid in ("", "--"):
-            return Snapshot(interface, "", "", visible)
+            return Snapshot(interface, "", "", visible, device_state)
         active = self.profile(active_uuid)
-        return Snapshot(interface, active.ssid, active.uuid, visible)
+        return Snapshot(interface, active.ssid, active.uuid, visible, device_state)
 
     def current(self, interface=""):
         return self._current(self.select_interface(interface))
@@ -125,6 +146,10 @@ class NetworkManager:
 
     def snapshot(self, interface=""):
         interface = self.select_interface(interface)
+        current = self._current(interface)
+        if current.connecting:
+            # 不在系统关联热点、协商密码或 DHCP 时触发扫描和新的连接请求。
+            return current
         # rescan yes 失败时保留现有连接，不能将失败解释为“没有热点”。
         scan = self.run("-t", "-f", "SSID", "device", "wifi", "list", "ifname", interface, "--rescan", "yes")
         visible = frozenset(split_escaped(line)[0] for line in scan.splitlines() if line)
@@ -141,8 +166,25 @@ class NetworkManager:
                 raise NetworkError("同名 Wi-Fi 有多个已保存连接，请在界面中明确选择")
             if not candidates:
                 raise NetworkError("未找到此 Wi-Fi 的系统连接配置，请先保存连接或在系统网络设置中连接一次")
-            profile_uuid = candidates[0].uuid
-        self.run("connection", "up", "uuid", profile_uuid, "ifname", interface, timeout=25)
+            selected = candidates[0]
+            profile_uuid = selected.uuid
+        self.check_security(selected, interface)
+        # 覆盖正常的 Wi-Fi 关联及 DHCP 等待，不与 HTTP 认证超时混用。
+        self.run("connection", "up", "uuid", profile_uuid, "ifname", interface, timeout=65, wait=60)
+
+    def check_security(self, profile, interface):
+        """启动连接前验证缓存中的热点安全方式，避免先断开现有好连接。"""
+        rows = self.run("-t", "-f", "SSID,SECURITY", "device", "wifi", "list", "ifname", interface, "--rescan", "no")
+        advertised = [parts[1] for parts in map(split_escaped, rows.splitlines()) if len(parts) == 2 and parts[0] == profile.ssid]
+        if not advertised:
+            raise NetworkError("目标 Wi-Fi 已不在扫描列表中，暂不发起连接，请稍后重试")
+        open_ap = any(value in ("", "--") for value in advertised)
+        secured_ap = any(value not in ("", "--") for value in advertised)
+        secured_profile = profile.key_mgmt not in ("", "--")
+        if secured_profile and not secured_ap:
+            raise NetworkError("目标 Wi-Fi 是开放网络，但所选连接配置为加密网络；请选择开放网络连接，校园网密码请填写在认证页")
+        if not secured_profile and not open_ap:
+            raise NetworkError("目标 Wi-Fi 需要无线密码，但所选连接配置为开放网络；请重新选择或创建匹配的系统连接")
 
     def create_profile(self, ssid, interface, password=""):
         """通过系统 D-Bus 保存，不连接；密码不会出现在进程命令行。"""

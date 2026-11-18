@@ -87,6 +87,16 @@ class ControllerTests(unittest.TestCase):
         self.assertEqual(self.network.calls, [])
         self.assertEqual(self.controller.status.phase, "网络操作未完成")
 
+    def test_pending_system_connection_does_not_resubmit_or_authenticate(self):
+        self.network.snapshot = Mock(return_value=Snapshot("wlan0", "cqu-wifi", "other-profile", frozenset(), device_state=70))
+        self.controller.tick()
+        self.controller.tick()
+        self.assertEqual(self.network.calls, [])
+        self.auth.authenticate.assert_not_called()
+        self.probe.assert_not_called()
+        self.assertEqual(self.controller.status.phase, "等待系统连接")
+        self.assertIn("网络地址", self.controller.status.detail)
+
     def test_repeated_connection_failure_cools_preferred_and_uses_fallback(self):
         self.controller.config = replace(self.config, stable_seconds=0)
         self.network.ssid = "other"

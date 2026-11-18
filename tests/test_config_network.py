@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 from campus_net.autostart import set_autostart
 from campus_net.config import Config, load_config, save_config
 from campus_net.logging_utils import SafeFormatter
-from campus_net.network import NetworkError, NetworkManager, Profile, split_escaped
+from campus_net.network import NetworkError, NetworkManager, Profile, Snapshot, split_escaped
 from campus_net.secrets import SecretStore
 
 
@@ -89,9 +89,67 @@ class NetworkTests(unittest.TestCase):
     def test_matching_by_ssid_not_connection_name(self):
         network = NetworkManager()
         network.profiles = Mock(return_value=[Profile("arbitrary name", "profile-id", "ljq")])
-        network.run = Mock(return_value="")
+        network.run = Mock(return_value="ljq:")
         network.connect("ljq", "", "wlan0")
         self.assertEqual(network.run.call_args.args[:4], ("connection", "up", "uuid", "profile-id"))
+        self.assertEqual(network.run.call_args.kwargs, {"timeout": 65, "wait": 60})
+
+    def test_wpa_profile_for_open_campus_is_rejected_before_switch(self):
+        network = NetworkManager()
+        network.profile = Mock(return_value=Profile("wrong campus", "bad-id", "CQU_WiFi", key_mgmt="wpa-psk"))
+        network.run = Mock(return_value="CQU_WiFi:\nCQU_WiFi:")
+        with self.assertRaisesRegex(NetworkError, "开放网络"):
+            network.connect("CQU_WiFi", "bad-id", "wlan0")
+        self.assertEqual(network.run.call_count, 1)
+        self.assertNotIn("up", network.run.call_args.args)
+
+    def test_open_profile_for_encrypted_hotspot_is_rejected_before_switch(self):
+        network = NetworkManager()
+        network.profile = Mock(return_value=Profile("wrong hotspot", "bad-id", "ljq"))
+        network.run = Mock(return_value="ljq:WPA2")
+        with self.assertRaisesRegex(NetworkError, "无线密码"):
+            network.connect("ljq", "bad-id", "wlan0")
+        self.assertNotIn("up", network.run.call_args.args)
+
+    def test_matching_encrypted_profile_connects_and_mixed_security_is_not_misclassified(self):
+        network = NetworkManager()
+        network.profile = Mock(return_value=Profile("hotspot", "good-id", "ljq", key_mgmt="wpa-psk"))
+        network.run = Mock(return_value="ljq:WPA2\nljq:")
+        network.connect("ljq", "good-id", "wlan0")
+        self.assertEqual(network.run.call_args.args[:4], ("connection", "up", "uuid", "good-id"))
+
+    def test_missing_hotspot_does_not_start_activation(self):
+        network = NetworkManager()
+        network.profile = Mock(return_value=Profile("campus", "campus-id", "CQU_WiFi"))
+        network.run = Mock(return_value="other:WPA2")
+        with self.assertRaisesRegex(NetworkError, "扫描列表"):
+            network.connect("CQU_WiFi", "campus-id", "wlan0")
+        self.assertNotIn("up", network.run.call_args.args)
+
+    def test_dhcp_in_progress_skips_rescan_and_preserves_state(self):
+        network = NetworkManager()
+        network.select_interface = Mock(return_value="wlan0")
+        snapshot = Snapshot("wlan0", "CQU_WiFi", "campus-id", frozenset(), device_state=70)
+        network._current = Mock(return_value=snapshot)
+        network.run = Mock()
+        self.assertEqual(network.snapshot("wlan0"), snapshot)
+        network.run.assert_not_called()
+
+    def test_reading_current_state_retains_dhcp_phase(self):
+        network = NetworkManager()
+        network.run = Mock(side_effect=["70 (connecting (getting IP configuration))", "campus-id"])
+        network.profile = Mock(return_value=Profile("campus", "campus-id", "CQU_WiFi"))
+        current = network._current("wlan0")
+        self.assertEqual(current.device_state, 70)
+        self.assertTrue(current.connecting)
+        self.assertEqual(current.ssid, "CQU_WiFi")
+
+    def test_open_profile_missing_trailing_fields_is_parsed_correctly(self):
+        network = NetworkManager()
+        network.run = Mock(return_value="campus\ncampus-id\nCQU_WiFi")
+        profile = network.profile("campus-id")
+        self.assertEqual(profile.interface, "")
+        self.assertEqual(profile.security_label, "开放网络")
 
     def test_duplicate_ssids_and_wrong_explicit_profile_do_not_connect(self):
         network = NetworkManager()

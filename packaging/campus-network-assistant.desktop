@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=校园网自动连接助手
+Name[en]=Campus Network Assistant
+Comment=优先连接 Wi-Fi，自动完成校园网认证
+Exec=campus-network-assistant
+Icon=campus-network-assistant
+Terminal=false
+StartupNotify=false
+Categories=Network;GTK;
+Keywords=WiFi;校园网;网络;认证;
+Actions=Quit;
+
+[Desktop Action Quit]
+Name=退出后台程序
+Exec=campus-network-assistant --quit
